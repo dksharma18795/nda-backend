@@ -349,6 +349,8 @@ def generate_word_html(ministry, dept, office, period_str, active_months, att_di
 # --- GENERATE PDF ---
 def generate_official_pdf(ministry, dept, office, period_str, active_months, att_dict, final_bill, logs_df, night_hours_per_duty, month_cols):
     pdf = FPDF(orientation='L', unit='mm', format='A4') 
+    
+    # --- PART 1: ATTENDANCE ---
     pdf.add_page()
     pdf.set_font("Arial", 'B', 15)
     pdf.cell(0, 7, txt=ministry.upper(), ln=True, align='C')
@@ -398,6 +400,7 @@ def generate_official_pdf(ministry, dept, office, period_str, active_months, att
             pdf.cell(12, 6, str(duties_count), 1, 1, 'C')
         pdf.ln(5)
 
+    # --- PART 2: BILL & SUMMARY ---
     pdf.add_page()
     pdf.set_font("Arial", 'B', 15)
     pdf.cell(0, 7, txt=ministry.upper(), ln=True, align='C')
@@ -509,6 +512,90 @@ def generate_official_pdf(ministry, dept, office, period_str, active_months, att
     pdf.set_font("Arial", 'BI', 10)
     pdf.cell(0, 8, f"({amount_words})", 0, 1, 'C')
 
+    # --- PART 3: EMPLOYEE-WISE FORMAT ---
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 15)
+    pdf.cell(0, 7, txt=ministry.upper(), ln=True, align='C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 6, txt=dept.upper() + ", " + office.upper(), ln=True, align='C')
+    pdf.set_font("Arial", 'BU', 12)
+    pdf.cell(0, 8, txt="PART III: EMPLOYEE-WISE FINANCIAL FORMAT", ln=True, align='C')
+    pdf.ln(3)
+
+    unique_emps = logs_df['Emp No'].unique()
+    for emp in unique_emps:
+        emp_logs = logs_df[logs_df['Emp No'] == emp]
+        emp_name = emp_logs.iloc[0]['Name']
+        emp_post = emp_logs.iloc[0]['Post']
+        
+        if pdf.get_y() > 150: 
+            pdf.add_page()
+            
+        pdf.set_font("Arial", 'B', 10)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(0, 6, f"NIGHT DUTY ALLOWANCE FOR THE PERIOD {period_str}", 1, 1, 'C', fill=True)
+        pdf.cell(0, 6, f"PN- {emp} {str(emp_name).upper()}, {str(emp_post).upper()}", 1, 1, 'C', fill=True)
+        
+        pdf.set_font("Arial", 'B', 8)
+        w3 = [12, 16, 20, 12, 22, 22, 35, 30, 45, 25, 38] 
+        
+        pdf.cell(w3[0], 10, "Sr. No.", 1, 0, 'C')
+        pdf.cell(w3[1], 10, "Period", 1, 0, 'C')
+        pdf.cell(w3[2], 10, "Basic Pay", 1, 0, 'C')
+        pdf.cell(w3[3], 10, "D.A%", 1, 0, 'C')
+        pdf.cell(w3[4], 10, "DA in Rs.", 1, 0, 'C')
+        pdf.cell(w3[5], 10, "BP+DA", 1, 0, 'C')
+        pdf.cell(w3[6], 10, "(BP+DA)/200 For 1hr", 1, 0, 'C')
+        pdf.cell(w3[7], 10, "NDA 1 Minute", 1, 0, 'C')
+        
+        rate_mins = int(night_hours_per_duty * 10)
+        pdf.cell(w3[8], 10, f"NDA for one day ({rate_mins}Min)", 1, 0, 'C')
+        pdf.cell(w3[9], 10, "Total Days", 1, 0, 'C')
+        pdf.cell(w3[10], 10, "Total Amount", 1, 1, 'C')
+        
+        pdf.set_font("Arial", '', 8)
+        sr_no = 1
+        emp_total = 0.0
+        emp_days = 0
+        for _, r in emp_logs.iterrows():
+            bp = r["Basic Pay"]
+            capped_bp = min(bp, 43600)
+            da_pct = r["DA %"]
+            da_rs = capped_bp * (da_pct / 100)
+            bp_da = capped_bp + da_rs
+            hr_rate = bp_da / 200
+            min_rate = hr_rate / 60
+            day_rate = hr_rate * (night_hours_per_duty / 6)
+            days = r["Duties"]
+            amt = r["NDA Paid (₹)"]
+            
+            month_abbr = r["Month"][:3]
+            yr_str = str(r["Year"])[-2:]
+            period_val = f"{month_abbr}-{yr_str}"
+            
+            pdf.cell(w3[0], 7, str(sr_no), 1, 0, 'C')
+            pdf.cell(w3[1], 7, period_val, 1, 0, 'C')
+            pdf.cell(w3[2], 7, f"{bp:,.0f}", 1, 0, 'C')
+            pdf.cell(w3[3], 7, str(int(da_pct)), 1, 0, 'C')
+            pdf.cell(w3[4], 7, f"{da_rs:,.0f}", 1, 0, 'C')
+            pdf.cell(w3[5], 7, f"{bp_da:,.0f}", 1, 0, 'C')
+            pdf.cell(w3[6], 7, f"{hr_rate:,.2f}", 1, 0, 'C')
+            pdf.cell(w3[7], 7, f"{min_rate:,.2f}", 1, 0, 'C')
+            pdf.cell(w3[8], 7, f"{day_rate:,.2f}", 1, 0, 'C')
+            pdf.cell(w3[9], 7, str(days), 1, 0, 'C')
+            pdf.cell(w3[10], 7, f"{amt:,.2f}", 1, 1, 'C')
+            
+            sr_no += 1
+            emp_total += amt
+            emp_days += days
+            
+        pdf.set_font("Arial", 'B', 8)
+        pdf.cell(sum(w3[:9]), 7, "TOTAL", 1, 0, 'C')
+        pdf.cell(w3[9], 7, str(emp_days), 1, 0, 'C')
+        pdf.cell(w3[10], 7, f"{emp_total:,.2f}", 1, 1, 'C')
+        pdf.ln(8)
+
+    # Note: Returns clean byte output without encode (fixed earlier)
     return pdf.output()
 
 # --- MAIN API HANDLER ---
@@ -529,14 +616,12 @@ def process_and_generate_reports(data):
         
         att_rows = []
         for rec in m_data.records:
-            # Reconstruct attendance row
             row = {"Emp No": rec.emp_no, "Name": rec.name, "Post": rec.post, "Basic Pay": rec.basic_pay}
             num_days = calendar.monthrange(y, m)[1]
             for d in range(1, num_days + 1):
                 row[str(d)] = rec.attendance.get(str(d), False)
             att_rows.append(row)
             
-            # Reconstruct logs
             if rec.total_duties > 0:
                 capped_bp = min(rec.basic_pay, 43600)
                 hr_rate = (capped_bp * (1 + da_val/100)) / 200
