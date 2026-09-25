@@ -53,6 +53,7 @@ def generate_dynamic_excel(ministry, dept, office, period_str, active_months, at
     thin = Side(style='thin')
     border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
     
+    # --- PART I ---
     ws_admin = wb.create_sheet("Part I - Administration")
     ws_admin.page_setup.orientation = ws_admin.ORIENTATION_LANDSCAPE
     ws_admin.page_setup.paperSize = ws_admin.PAPERSIZE_A4
@@ -260,6 +261,101 @@ def generate_dynamic_excel(ministry, dept, office, period_str, active_months, at
     ws_fin.column_dimensions['I'].width = 12
     ws_fin.column_dimensions[last_col_l].width = 12
 
+    # --- PART III: EXCEL ---
+    ws_emp = wb.create_sheet("Part III - Employee Wise")
+    ws_emp.page_setup.orientation = ws_emp.ORIENTATION_LANDSCAPE
+    ws_emp.page_setup.paperSize = ws_emp.PAPERSIZE_A4
+    ws_emp.sheet_properties.pageSetUpPr.fitToPage = True
+    ws_emp.page_setup.fitToWidth = 1
+    
+    row_idx = 1
+    ws_emp.merge_cells('A1:K1'); ws_emp['A1'] = ministry.upper(); ws_emp['A1'].font = font_title; ws_emp['A1'].alignment = align_c
+    row_idx += 1
+    ws_emp.merge_cells('A2:K2'); ws_emp['A2'] = f"{dept.upper()}, {office.upper()}"; ws_emp['A2'].font = font_bold; ws_emp['A2'].alignment = align_c
+    row_idx += 2
+    ws_emp.merge_cells('A3:K3'); ws_emp['A3'] = "PART III: EMPLOYEE-WISE FINANCIAL FORMAT"; ws_emp['A3'].font = font_title; ws_emp['A3'].alignment = align_c
+    row_idx += 3
+
+    unique_emps = logs_df['Emp No'].unique()
+    for emp in unique_emps:
+        emp_logs = logs_df[logs_df['Emp No'] == emp]
+        emp_name = emp_logs.iloc[0]['Name']
+        emp_post = emp_logs.iloc[0]['Post']
+
+        ws_emp.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=11)
+        c_hdr1 = ws_emp.cell(row=row_idx, column=1, value=f"NIGHT DUTY ALLOWANCE FOR THE PERIOD {period_str}")
+        c_hdr1.font = font_bold; c_hdr1.alignment = align_c; c_hdr1.fill = fill_hdr
+        for col in range(1, 12): ws_emp.cell(row=row_idx, column=col).border = border_all
+        row_idx += 1
+
+        ws_emp.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=11)
+        c_hdr2 = ws_emp.cell(row=row_idx, column=1, value=f"PN- {emp} {str(emp_name).upper()}, {str(emp_post).upper()}")
+        c_hdr2.font = font_bold; c_hdr2.alignment = align_c; c_hdr2.fill = fill_hdr
+        for col in range(1, 12): ws_emp.cell(row=row_idx, column=col).border = border_all
+        row_idx += 1
+
+        emp_headers = ["Sr. No.", "Period", "Basic Pay", "D.A%", "DA in Rs.", "BP+DA", "(BP+DA)/200 For 1hr", "NDA 1 Minute", f"NDA for one day ({int(night_hours_per_duty * 10)}Min)", "Total Days", "Total Amount"]
+        for c_i, h in enumerate(emp_headers, 1):
+            c = ws_emp.cell(row=row_idx, column=c_i, value=h)
+            c.font = font_bold; c.border = border_all; c.alignment = align_c; c.fill = fill_hdr
+        row_idx += 1
+
+        sr_no = 1
+        emp_total = 0.0
+        emp_days = 0
+        for _, r in emp_logs.iterrows():
+            bp = r["Basic Pay"]
+            capped_bp = min(bp, 43600)
+            da_pct = r["DA %"]
+            da_rs = capped_bp * (da_pct / 100)
+            bp_da = capped_bp + da_rs
+            hr_rate = bp_da / 200
+            min_rate = hr_rate / 60
+            day_rate = hr_rate * (night_hours_per_duty / 6)
+            days = r["Duties"]
+            amt = r["NDA Paid (₹)"]
+
+            month_abbr = r["Month"][:3]
+            yr_str = str(r["Year"])[-2:]
+            period_val = f"{month_abbr}-{yr_str}"
+
+            vals = [sr_no, period_val, bp, int(da_pct), da_rs, bp_da, hr_rate, min_rate, day_rate, days, amt]
+            formats = ['General', 'General', '#,##0', '0', '#,##0', '#,##0', '0.00', '0.00', '0.00', '0', '#,##0.00']
+            
+            for c_i, (val, fmt) in enumerate(zip(vals, formats), 1):
+                c = ws_emp.cell(row=row_idx, column=c_i, value=val)
+                c.border = border_all; c.alignment = align_c; c.number_format = fmt
+            
+            sr_no += 1
+            emp_total += amt
+            emp_days += days
+            row_idx += 1
+
+        ws_emp.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=9)
+        c_tot_lbl = ws_emp.cell(row=row_idx, column=1, value="TOTAL")
+        c_tot_lbl.font = font_bold; c_tot_lbl.alignment = align_c; c_tot_lbl.border = border_all
+        for col in range(2, 10): ws_emp.cell(row=row_idx, column=col).border = border_all
+
+        c_tot_days = ws_emp.cell(row=row_idx, column=10, value=emp_days)
+        c_tot_days.font = font_bold; c_tot_days.alignment = align_c; c_tot_days.border = border_all
+
+        c_tot_amt = ws_emp.cell(row=row_idx, column=11, value=emp_total)
+        c_tot_amt.font = font_bold; c_tot_amt.alignment = align_c; c_tot_amt.border = border_all; c_tot_amt.number_format = '#,##0.00'
+        
+        row_idx += 3
+
+    ws_emp.column_dimensions['A'].width = 8
+    ws_emp.column_dimensions['B'].width = 12
+    ws_emp.column_dimensions['C'].width = 12
+    ws_emp.column_dimensions['D'].width = 8
+    ws_emp.column_dimensions['E'].width = 12
+    ws_emp.column_dimensions['F'].width = 12
+    ws_emp.column_dimensions['G'].width = 18
+    ws_emp.column_dimensions['H'].width = 14
+    ws_emp.column_dimensions['I'].width = 22
+    ws_emp.column_dimensions['J'].width = 12
+    ws_emp.column_dimensions['K'].width = 15
+
     output = io.BytesIO()
     wb.save(output)
     return output.getvalue()
@@ -342,7 +438,49 @@ def generate_word_html(ministry, dept, office, period_str, active_months, att_di
     
     html += f"<tr><td colspan='{6 + len(month_cols)}' style='text-align:right; font-weight:bold;'>GRAND TOTAL PAYOUT:</td><td style='font-weight:bold; font-size:11pt;'>&#8377; {grand_total_all:,.2f}</td></tr>"
     html += f"<tr><td colspan='{6 + len(month_cols)}' style='text-align:right; font-weight:bold;'>ROUNDED GRAND TOTAL:</td><td style='font-weight:bold; font-size:11pt;'>&#8377; {rounded_grand_total:,.0f}</td></tr>"
-    html += f"<tr><td colspan='{7 + len(month_cols)}' style='text-align:center; font-weight:bold; font-style:italic;'>({amount_words})</td></tr></table>"
+    html += f"<tr><td colspan='{7 + len(month_cols)}' style='text-align:center; font-weight:bold; font-style:italic;'>({amount_words})</td></tr></table><br>"
+
+    # --- PART III: WORD HTML ---
+    html += f"<h3 style='page-break-before: always;'>{ministry.upper()}</h3>"
+    html += f"<h4>{dept.upper()}, {office.upper()}</h4>"
+    html += "<h4>PART III: EMPLOYEE-WISE FINANCIAL FORMAT</h4>"
+    
+    unique_emps = logs_df['Emp No'].unique()
+    for emp in unique_emps:
+        emp_logs = logs_df[logs_df['Emp No'] == emp]
+        emp_name = emp_logs.iloc[0]['Name']
+        emp_post = emp_logs.iloc[0]['Post']
+        
+        html += f"<div class='header-row' style='text-align:center;'>NIGHT DUTY ALLOWANCE FOR THE PERIOD {period_str}<br>PN- {emp} {str(emp_name).upper()}, {str(emp_post).upper()}</div>"
+        html += f"<table><tr><th>Sr. No.</th><th>Period</th><th>Basic Pay</th><th>D.A%</th><th>DA in Rs.</th><th>BP+DA</th><th>(BP+DA)/200 For 1hr</th><th>NDA 1 Minute</th><th>NDA for one day ({int(night_hours_per_duty * 10)}Min)</th><th>Total Days</th><th>Total Amount (&#8377;)</th></tr>"
+        
+        sr_no = 1
+        emp_total = 0.0
+        emp_days = 0
+        for _, r in emp_logs.iterrows():
+            bp = r["Basic Pay"]
+            capped_bp = min(bp, 43600)
+            da_pct = r["DA %"]
+            da_rs = capped_bp * (da_pct / 100)
+            bp_da = capped_bp + da_rs
+            hr_rate = bp_da / 200
+            min_rate = hr_rate / 60
+            day_rate = hr_rate * (night_hours_per_duty / 6)
+            days = r["Duties"]
+            amt = r["NDA Paid (₹)"]
+            
+            month_abbr = r["Month"][:3]
+            yr_str = str(r["Year"])[-2:]
+            period_val = f"{month_abbr}-{yr_str}"
+            
+            html += f"<tr><td>{sr_no}</td><td>{period_val}</td><td>{bp:,.0f}</td><td>{int(da_pct)}</td><td>{da_rs:,.0f}</td><td>{bp_da:,.0f}</td><td>{hr_rate:,.2f}</td><td>{min_rate:,.2f}</td><td>{day_rate:,.2f}</td><td>{days}</td><td style='font-weight:bold;'>{amt:,.2f}</td></tr>"
+            
+            sr_no += 1
+            emp_total += amt
+            emp_days += days
+            
+        html += f"<tr><td colspan='9' style='text-align:center; font-weight:bold;'>TOTAL</td><td style='font-weight:bold;'>{emp_days}</td><td style='font-weight:bold;'>{emp_total:,.2f}</td></tr></table><br>"
+
     html += "</body></html>"
     return html.encode('utf-8')
 
@@ -595,7 +733,6 @@ def generate_official_pdf(ministry, dept, office, period_str, active_months, att
         pdf.cell(w3[10], 7, f"{emp_total:,.2f}", 1, 1, 'C')
         pdf.ln(8)
 
-    # Note: Returns clean byte output without encode (fixed earlier)
     return pdf.output()
 
 # --- MAIN API HANDLER ---
