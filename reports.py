@@ -509,7 +509,7 @@ def generate_official_pdf(ministry, dept, office, period_str, active_months, att
     pdf.set_font("Arial", 'BI', 10)
     pdf.cell(0, 8, f"({amount_words})", 0, 1, 'C')
 
-    return pdf.output(dest='S').encode('latin1')
+    return pdf.output()
 
 # --- MAIN API HANDLER ---
 def process_and_generate_reports(data):
